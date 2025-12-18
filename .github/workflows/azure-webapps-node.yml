@@ -1,0 +1,462 @@
+# This workflow will build and push a node.js application to an Azure Web App when a commit is pushed to your default branch.
+#
+# This workflow assumes you have already created the target Azure App Service web app.
+# For instructions see https://docs.microsoft.com/en-us/azure/app-service/quickstart-nodejs?tabs=linux&pivots=development-environment-cli
+#
+# To configure this workflow:
+#
+# 1. Download the Publish Profile for your Azure Web App. You can download this file from the Overview page of your Web App in the Azure Portal.
+#    For more information: https://docs.microsoft.com/en-us/azure/app-service/deploy-github-actions?tabs=applevel#generate-deployment-credentials
+#
+# 2. Create a secret in your repository named AZURE_WEBAPP_PUBLISH_PROFILE, paste the publish profile contents as the value of the secret.
+#    For instructions on obtaining the publish profile see: https://docs.microsoft.com/azure/app-service/deploy-github-actions#configure-the-github-secret
+#
+# 3. Change the value for the AZURE_WEBAPP_NAME. Optionally, change the AZURE_WEBAPP_PACKAGE_PATH and NODE_VERSION environment variables below.
+#
+# For more information on GitHub Actions for Azure: https://github.com/Azure/Actions
+# For more information on the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
+# For more samples to get started with GitHub Action workflows to deploy to Azure: https://github.com/Azure/actions-workflow-samples
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_NAME: your-app-name    # set this to your application's name
+  AZURE_WEBAPP_PACKAGE_PATH: '.'      # set this to the path to your web app project, defaults to the repository root
+  NODE_VERSION: '20.x'                # set this to the node version to use
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: npm install, build, and test
+      run: |
+        npm install
+        npm run build --if-present
+        npm run test --if-present
+
+    - name: Upload artifact for deployment job
+      uses: actions/upload-artifact@v4
+      with:
+        name: node-app
+        path: .
+
+  deploy:
+    permissions:
+      contents: none
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: 'Development'
+      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+
+    steps:
+    - name: Download artifact from build job
+      uses: actions/download-artifact@v4
+      with:
+        name: node-app
+
+    - name: 'Deploy to Azure WebApp'
+      id: deploy-to-webapp
+      uses: azure/webapps-deploy@v2
+      with:
+        app-name: ${{ env.AZURE_WEBAPP_NAME }}
+        publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+        package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle Vision Pro v2.1 | 粒子幻境</title>
+    
+    <!-- 基础依赖 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    
+    <!-- Import Map 为 ESM 提供路径支持 -->
+    <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.2.0",
+    "react-dom": "https://esm.sh/react-dom@18.2.0",
+    "three": "https://esm.sh/three@0.160.0",
+    "three/examples/jsm/postprocessing/EffectComposer": "https://esm.sh/three@0.160.0/examples/jsm/postprocessing/EffectComposer",
+    "three/examples/jsm/postprocessing/RenderPass": "https://esm.sh/three@0.160.0/examples/jsm/postprocessing/RenderPass",
+    "three/examples/jsm/postprocessing/UnrealBloomPass": "https://esm.sh/three@0.160.0/examples/jsm/postprocessing/UnrealBloomPass",
+    "three/examples/jsm/controls/OrbitControls": "https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "three/": "https://esm.sh/three@^0.182.0/"
+  }
+}
+</script>
+
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #020205; user-select: none; font-family: system-ui, -apple-system, sans-serif; }
+        canvas { display: block; }
+        .glass-panel { background: rgba(10, 10, 20, 0.6); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .custom-scroll::-webkit-scrollbar { height: 4px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+        @keyframes glow { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .animate-glow { animation: glow 2s ease-in-out infinite; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useRef, useCallback } from 'react';
+        import ReactDOM from 'react-dom';
+        import * as THREE from 'three';
+        import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer';
+        import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
+        import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
+        import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+
+        // --- 配置常量 ---
+        const PARTICLE_COUNT = 40000;
+        const PARTICLE_SIZE = 0.18;
+        const SATURN_BODY_RATIO = 0.3;
+
+        const SHAPES = [
+            { id: 'sphere', name: 'Nebula Sphere', icon: '🌐' },
+            { id: 'heart', name: 'Cyber Core', icon: '❤️' },
+            { id: 'saturn', name: 'Astral Rings', icon: '🪐' },
+            { id: 'lotus', name: 'Zen Lotus', icon: '🪷' },
+            { id: 'galaxy', name: 'Void Spiral', icon: '🌀' }
+        ];
+
+        // --- 几何工具函数 ---
+        const getShapePositions = (type) => {
+            const pos = new Float32Array(PARTICLE_COUNT * 3);
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                let x = 0, y = 0, z = 0;
+                if (type === 'sphere') {
+                    const r = 10 + Math.random() * 2;
+                    const theta = Math.random() * Math.PI * 2;
+                    const phi = Math.acos(2 * Math.random() - 1);
+                    x = r * Math.sin(phi) * Math.cos(theta);
+                    y = r * Math.sin(phi) * Math.sin(theta);
+                    z = r * Math.cos(phi);
+                    if (i < PARTICLE_COUNT * 0.2) { x *= 0.3; y *= 0.3; z *= 0.3; }
+                } else if (type === 'heart') {
+                    const t = Math.PI - 2 * Math.PI * Math.random();
+                    x = 16 * Math.pow(Math.sin(t), 3);
+                    y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+                    z = 6 * Math.cos(t) * Math.sin(Math.random() * Math.PI * 2) * Math.sin(t);
+                    const s = 0.6; x *= s; y *= s; z *= s;
+                } else if (type === 'saturn') {
+                    if (i < PARTICLE_COUNT * SATURN_BODY_RATIO) {
+                        const r = 5.5, t = Math.random() * Math.PI * 2, p = Math.acos(2 * Math.random() - 1);
+                        x = r * Math.sin(p) * Math.cos(t); y = r * 0.9 * Math.sin(p) * Math.sin(t); z = r * Math.cos(p);
+                    } else {
+                        const a = Math.random() * Math.PI * 2, r = 8 + Math.random() * 8;
+                        x = r * Math.cos(a); y = (Math.random() - 0.5) * 0.2; z = r * Math.sin(a);
+                        const tilt = 0.4;
+                        const yn = y * Math.cos(tilt) - x * Math.sin(tilt);
+                        const xn = y * Math.sin(tilt) + x * Math.cos(tilt);
+                        x = xn; y = yn;
+                    }
+                } else if (type === 'lotus') {
+                    const u = Math.random() * Math.PI * 2, v = Math.random();
+                    const r = 8 * (0.5 + 0.5 * Math.pow(Math.sin(3.5 * u), 2)) * v;
+                    x = r * Math.cos(u); z = r * Math.sin(u); y = 4 * Math.pow(v, 2) - 2;
+                } else if (type === 'galaxy') {
+                    const d = Math.pow(Math.random(), 0.5), r = d * 20, a = d * 10 + (i % 3) * 2.09;
+                    x = r * Math.cos(a); z = r * Math.sin(a); y = (Math.random() - 0.5) * (15 - r) * 0.2;
+                }
+                pos[i*3] = x; pos[i*3+1] = y; pos[i*3+2] = z;
+            }
+            return pos;
+        };
+
+        const getShapeColors = (type) => {
+            const cols = new Float32Array(PARTICLE_COUNT * 3);
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                const b = 0.2 + Math.random() * 0.8;
+                let r = b, g = b, b_ = b;
+                if (type === 'saturn') {
+                    if (i < PARTICLE_COUNT * SATURN_BODY_RATIO) { r = 1.0; g = 0.7; b_ = 0.3; }
+                    else { r = 0.6; g = 0.8; b_ = 1.0; }
+                    r *= b; g *= b; b_ *= b;
+                }
+                cols[i*3] = r; cols[i*3+1] = g; cols[i*3+2] = b_;
+            }
+            return cols;
+        };
+
+        // --- 子组件: 覆盖 UI ---
+        const OverlayUI = ({ currentShape, onShapeChange, currentColor, onColorChange, gestureMode, online, onToggleFullScreen }) => {
+            const [copied, setCopied] = useState(false);
+            const handleShare = async () => {
+                const url = window.location.href;
+                if (navigator.share) {
+                    try { await navigator.share({ title: 'Particle Pro', url }); } catch(e){}
+                } else {
+                    await navigator.clipboard.writeText(url);
+                    setCopied(true); setTimeout(() => setCopied(false), 2000);
+                }
+            };
+
+            return (
+                <div className="absolute inset-0 pointer-events-none z-10 p-4 md:p-8 flex flex-col justify-between">
+                    <div className="flex justify-between items-start pointer-events-auto">
+                        <div className="glass-panel p-5 rounded-3xl shadow-2xl transition-all hover:scale-[1.02]">
+                            <h1 className="text-white text-xl md:text-2xl font-bold tracking-tight mb-2">
+                                Particle Vision <span className="text-[10px] text-cyan-400 border border-cyan-400/30 px-1 rounded leading-none">V2.1</span>
+                            </h1>
+                            <div className="flex items-center gap-2 bg-black/40 rounded-full px-3 py-1 w-fit border border-white/5">
+                                <div className={`w-2 h-2 rounded-full ${online ? 'bg-cyan-400 shadow-[0_0_10px_#22d3ee]' : 'bg-red-500 animate-pulse'}`} />
+                                <span className={`text-[10px] font-mono uppercase tracking-widest ${online ? 'text-cyan-300' : 'text-gray-400'}`}>
+                                    {online ? 'Core Linked' : 'Searching...'}
+                                </span>
+                            </div>
+                            <div className="mt-4 flex flex-col gap-1.5 border-t border-white/5 pt-3">
+                                {['scale', 'rotate', 'roll'].map(m => (
+                                    <div key={m} className={`flex items-center gap-2 transition-opacity ${gestureMode === m ? 'opacity-100' : 'opacity-20'}`}>
+                                        <span className="text-xs">{m === 'scale' ? '👋' : m === 'rotate' ? '☝️' : '✌️'}</span>
+                                        <span className="text-[9px] text-white uppercase tracking-tighter font-mono">{m} Mode</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="flex gap-2">
+                            <button onClick={handleShare} className="glass-panel p-3 text-white rounded-full hover:text-cyan-400 transition-all active:scale-95 relative">
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
+                                {copied && <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 text-[8px] bg-cyan-500 text-black px-1 rounded animate-bounce">COPIED</div>}
+                            </button>
+                            <button onClick={onToggleFullScreen} className="glass-panel p-3 text-white rounded-full hover:text-cyan-400 transition-all active:scale-95">
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col md:flex-row gap-4 items-end md:items-center justify-between pointer-events-auto">
+                        <div className="glass-panel p-2 rounded-2xl flex gap-1.5 overflow-x-auto max-w-full custom-scroll">
+                            {SHAPES.map(s => (
+                                <button key={s.id} onClick={() => onShapeChange(s.id)} className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase transition-all ${currentShape === s.id ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50' : 'text-white/50 border-transparent'} border`}>
+                                    {s.name}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="glass-panel p-3 rounded-2xl flex items-center gap-3">
+                            <div className="relative w-8 h-8 rounded-full overflow-hidden ring-1 ring-white/20">
+                                <input type="color" value={currentColor} onChange={e => onColorChange(e.target.value)} className="absolute -top-1/2 -left-1/2 w-[200%] h-[200%] cursor-pointer" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 主程序 ---
+        const App = () => {
+            const [shape, setShape] = useState('sphere');
+            const [color, setColor] = useState('#00ffff');
+            const [mode, setMode] = useState('none');
+            const [online, setOnline] = useState(false);
+            const [loading, setLoading] = useState(true);
+
+            const containerRef = useRef();
+            const sceneState = useRef({ 
+                handData: { isDetected: false, influence: 0, rotation: { x: 0, y: 0, z: 0 } },
+                targets: { pos: getShapePositions('sphere'), col: getShapeColors('sphere') }
+            });
+
+            // 初始化 Three.js
+            useEffect(() => {
+                const scene = new THREE.Scene();
+                scene.fog = new THREE.FogExp2(0x020205, 0.02);
+                const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
+                camera.position.z = 30;
+
+                const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true, powerPreference: "high-performance" });
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+                containerRef.current.appendChild(renderer.domElement);
+
+                const controls = new OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true; controls.autoRotate = true;
+
+                const geometry = new THREE.BufferGeometry();
+                geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(PARTICLE_COUNT*3), 3));
+                geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(PARTICLE_COUNT*3), 3));
+                
+                const material = new THREE.PointsMaterial({
+                    size: PARTICLE_SIZE, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, vertexColors: true,
+                    map: (() => {
+                        const c = document.createElement('canvas'); c.width=32; c.height=32;
+                        const ctx = c.getContext('2d');
+                        const g = ctx.createRadialGradient(16,16,0,16,16,16);
+                        g.addColorStop(0,'rgba(255,255,255,1)'); g.addColorStop(1,'rgba(0,0,0,0)');
+                        ctx.fillStyle=g; ctx.fillRect(0,0,32,32);
+                        return new THREE.CanvasTexture(c);
+                    })()
+                });
+                const particles = new THREE.Points(geometry, material);
+                scene.add(particles);
+
+                const composer = new EffectComposer(renderer);
+                composer.addPass(new RenderPass(scene, camera));
+                composer.addPass(new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85));
+
+                const clock = new THREE.Clock();
+                const animate = () => {
+                    requestAnimationFrame(animate);
+                    const dt = clock.getElapsedTime();
+                    const hd = sceneState.current.handData;
+                    const posAttr = particles.geometry.attributes.position;
+                    const colAttr = particles.geometry.attributes.color;
+
+                    let tSize = PARTICLE_SIZE, tScale = 1.0;
+                    if (hd.isDetected) {
+                        tScale = 0.2 + hd.influence * 2.3;
+                        tSize = PARTICLE_SIZE * (0.8 + hd.influence * 2.5);
+                        controls.autoRotate = false;
+                    } else {
+                        tScale = 1.0 + Math.sin(dt*1.5)*0.05;
+                        controls.autoRotate = true;
+                    }
+
+                    material.size = THREE.MathUtils.lerp(material.size, tSize, 0.1);
+                    const camUp = new THREE.Vector3(0,1,0).applyQuaternion(camera.quaternion);
+                    const camRight = new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion);
+                    const camFwd = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+                    particles.rotateOnWorldAxis(camUp, hd.rotation.y);
+                    particles.rotateOnWorldAxis(camRight, hd.rotation.x);
+                    particles.rotateOnWorldAxis(camFwd, hd.rotation.z);
+
+                    for(let i=0; i<PARTICLE_COUNT; i++) {
+                        let tx = sceneState.current.targets.pos[i*3], ty = sceneState.current.targets.pos[i*3+1], tz = sceneState.current.targets.pos[i*3+2];
+                        const d = Math.sqrt(tx*tx+ty*ty+tz*tz);
+                        const fs = tScale * (hd.isDetected ? 1.0 + hd.influence * Math.pow(Math.min(d/20,1), 1.5) * 2 : 1.0);
+                        tx *= fs; ty *= fs; tz *= fs;
+                        posAttr.array[i*3] += (tx - posAttr.array[i*3]) * 0.06;
+                        posAttr.array[i*3+1] += (ty - posAttr.array[i*3+1]) * 0.06;
+                        posAttr.array[i*3+2] += (tz - posAttr.array[i*3+2]) * 0.06;
+                        colAttr.array[i*3] += (sceneState.current.targets.col[i*3] - colAttr.array[i*3]) * 0.03;
+                        colAttr.array[i*3+1] += (sceneState.current.targets.col[i*3+1] - colAttr.array[i*3+1]) * 0.03;
+                        colAttr.array[i*3+2] += (sceneState.current.targets.col[i*3+2] - colAttr.array[i*3+2]) * 0.03;
+                    }
+                    posAttr.needsUpdate = true; colAttr.needsUpdate = true;
+                    controls.update(); composer.render();
+                };
+                animate();
+
+                const handleResize = () => {
+                    camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix();
+                    renderer.setSize(window.innerWidth, window.innerHeight); composer.setSize(window.innerWidth, window.innerHeight);
+                };
+                window.addEventListener('resize', handleResize);
+                
+                // 保存引用供外部修改
+                sceneState.current.updateColor = (c) => material.color.set(c);
+            }, []);
+
+            // 监听 React 状态同步到 Three.js
+            useEffect(() => {
+                sceneState.current.targets = { pos: getShapePositions(shape), col: getShapeColors(shape) };
+                if (shape === 'saturn') sceneState.current.updateColor('#ffffff');
+                else sceneState.current.updateColor(color);
+            }, [shape, color]);
+
+            // 初始化 MediaPipe
+            useEffect(() => {
+                const video = document.createElement('video');
+                const hands = new window.Hands({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+                hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+                
+                const s = { rotation: {x:0,y:0,z:0}, stableMode: 'scale', frameCount: 0, lastDetected: 0, finger: {prev:{x:0,y:0}, smooth:{x:0,y:0}, isTracking: false}, roll: {prevAngle: 0, isTracking: false} };
+
+                hands.onResults(res => {
+                    const now = Date.now();
+                    if (res.multiHandLandmarks?.length > 0) {
+                        setOnline(true); s.lastDetected = now;
+                        const lm = res.multiHandLandmarks[0];
+                        const dist = (i, j) => Math.sqrt(Math.pow(lm[i].x-lm[j].x,2)+Math.pow(lm[i].y-lm[j].y,2));
+                        const isOpen = (i) => dist(i, 0) > dist(i-2, 0) * 1.1;
+                        
+                        let m = 'scale';
+                        if (isOpen(16) || isOpen(20)) m = 'scale';
+                        else if (isOpen(8) && isOpen(12)) m = 'roll';
+                        else if (isOpen(8)) m = 'rotate';
+
+                        if (m === s.stableMode) s.frameCount = 0;
+                        else if (++s.frameCount > 4) { s.stableMode = m; s.frameCount = 0; s.finger.isTracking = false; s.roll.isTracking = false; setMode(m); }
+
+                        if (s.stableMode === 'roll') {
+                            const curAngle = Math.atan2(lm[8].y-lm[12].y, lm[8].x-lm[12].x);
+                            if (!s.roll.isTracking) { s.roll.prevAngle = curAngle; s.roll.isTracking = true; }
+                            let da = curAngle - s.roll.prevAngle;
+                            if (da > Math.PI) da -= 2*Math.PI; if (da < -Math.PI) da += 2*Math.PI;
+                            s.rotation.z = s.rotation.z * 0.96 + (-da * 1.5) * 0.3;
+                            s.roll.prevAngle = curAngle;
+                        } else if (s.stableMode === 'rotate') {
+                            if (!s.finger.isTracking) { s.finger.smooth = {x:lm[8].x, y:lm[8].y}; s.finger.prev = {x:lm[8].x, y:lm[8].y}; s.finger.isTracking = true; }
+                            s.finger.smooth.x += (lm[8].x - s.finger.smooth.x) * 0.2; s.finger.smooth.y += (lm[8].y - s.finger.smooth.y) * 0.2;
+                            const dx = s.finger.smooth.x - s.finger.prev.x, dy = s.finger.smooth.y - s.finger.prev.y;
+                            if (Math.abs(dx) > 0.005 || Math.abs(dy) > 0.005) {
+                                if (Math.abs(dx) > Math.abs(dy)) s.rotation.y -= dx * 3.5;
+                                else s.rotation.x += dy * 3.5;
+                            }
+                            s.finger.prev = {...s.finger.smooth};
+                        } else {
+                            const avg = [4,8,12,16,20].reduce((a,c)=>a+dist(c,0),0)/5;
+                            sceneState.current.handData.influence += (Math.max(0,Math.min(1,(avg-0.08)/0.32)) - sceneState.current.handData.influence) * 0.2;
+                        }
+                        s.rotation.x *= 0.92; s.rotation.y *= 0.92; s.rotation.z *= 0.96;
+                        sceneState.current.handData.isDetected = true;
+                        sceneState.current.handData.rotation = {...s.rotation};
+                    } else if (now - s.lastDetected > 800) {
+                        setOnline(false); setMode('none');
+                        sceneState.current.handData.isDetected = false;
+                        sceneState.current.handData.influence *= 0.98;
+                        s.rotation = {x:0,y:0,z:0};
+                    }
+                });
+
+                const cam = new window.Camera(video, { onFrame: async () => await hands.send({ image: video }), width: 640, height: 480 });
+                cam.start().then(() => setLoading(false));
+                return () => cam.stop();
+            }, []);
+
+            return (
+                <div className="relative w-screen h-screen">
+                    <div ref={containerRef} className="absolute inset-0" />
+                    {loading && (
+                        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black">
+                            <div className="w-16 h-16 border-4 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin mb-8 shadow-[0_0_20px_rgba(6,182,212,0.4)]" />
+                            <p className="text-cyan-400 font-mono text-sm uppercase tracking-widest animate-pulse">Initializing Particle Core...</p>
+                        </div>
+                    )}
+                    <OverlayUI 
+                        currentShape={shape} onShapeChange={setShape} 
+                        currentColor={color} onColorChange={setColor} 
+                        gestureMode={mode} online={online} 
+                        onToggleFullScreen={() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()} 
+                    />
+                </div>
+            );
+        };
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
